@@ -8,4 +8,4 @@ Spyders function to do this seems broken so I am doing it manuall
 """
 import os
 
-os.chdir('C:/Users/pis2/endurance')
+os.chdir('C:\\Users\\pis2\\Documents\\cognitive_endurance\\endurance')

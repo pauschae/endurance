@@ -1,0 +1,30 @@
+---
+title: "Simulations Cognitive Endurance"
+format: html
+editor: visual
+---
+
+Model
+
+## Why Logit?
+
+The alternative to Logit is an IRT model with a guessing percentage. Logit has the following advantages:
+
+\-
+
+## Running Code
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+1 + 1
+```
+
+You can add options to executable code like this
+
+```{r}
+#| echo: false
+2 * 2
+```
+
+The `echo: false` option disables the printing of code (only output is displayed).
