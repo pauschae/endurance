@@ -376,7 +376,9 @@ def calc_marginal_likelihood(params_df, data_questions, data_individuals, n_draw
         stacked_props = np.vstack(results)
         contributions = np.mean(stacked_props, axis=0)
         contributions = np.log(contributions)
-        return {"contributions": contributions, "value": contributions.sum()}
+        value= contributions.sum()
+        print(value)
+        return {"contributions": contributions, "value": value}
 
 # def calc_marginal_likelihood(params_df, data_questions, data_individuals, n_draws):
 #     """
