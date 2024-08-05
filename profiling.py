@@ -17,27 +17,26 @@ Author: pis2
 import cProfile
 import pstats
 from model.decisions import calc_marginal_likelihood, simulate_dgp, vectorize_data
-import numpy as np
 import pandas as pd
 
 # Define the parameters
 params = {
-    "value": [0, 1, 2, 1, 2, 1, 0.5, 5],
-    "lower_bound": [-np.inf, 0, 0, 0, 0, 0, 0, 0]
+    "value": [1, 2, 1, 2, 1, 0.5, 5],
+    "lower_bound": [0, 0, 0, 0, 0, 0, 0]
 }
 
-index_names = ["alpha_mean", "alpha_variance", "sigma_shape", "sigma_scale", 
+index_names = ["alpha_variance", "sigma_shape", "sigma_scale", 
                "beta_shape", "beta_scale", "k_alpha", "k_beta"]
 
 params = pd.DataFrame(data=params, index=index_names)
 
 # Simulate data
-params_questions, params_individuals, simulated_data = simulate_dgp(params, n_questions = 20, n_individuals = 100)
+params_questions, params_individuals, simulated_data = simulate_dgp(params, n_questions = 100, n_individuals = 1000)
 # Sort individual level data by question id to facilitate question level analysis
 data_individuals = simulated_data.sort_values(by=['question_id', 'individual_id'], ascending=True)
   
 # Starting parameters
-start_params = params.assign(value=8*[0.1])
+start_params = params.assign(value=7*[0.1])
 my_kwargs = {
     "data_questions": params_questions,
     "data_individuals": simulated_data,
@@ -73,9 +72,14 @@ def profile_function(func, func_name, *args, **kwargs):
     stats.strip_dirs().sort_stats('cumulative').print_stats(10)
 
 # Profile the calc_marginal_likelihood function
+#44.202
 profile_function(calc_marginal_likelihood, 'calc_marginal_likelihood',
                  start_params, **my_kwargs)
 
 # Profile the vectorize_data function
 # Adjusting the call to vectorize_data with the correct parameters
-profile_function(vectorize_data, 'vectorize_data', params_individuals, params_questions, params_questions, simulated_data)
+profile_function(vectorize_data, 'vectorize_data',
+                 params_individuals,
+                 params_questions,
+                 params_questions,
+                 simulated_data)

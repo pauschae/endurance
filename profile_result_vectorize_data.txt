@@ -1,20 +1,20 @@
-Sun Jul 21 23:04:27 2024    profile_results_vectorize_data.prof
+Mon Aug  5 14:32:14 2024    profile_results_vectorize_data.prof
 
-         1998865 function calls (1874722 primitive calls) in 1.450 seconds
+         2487 function calls (2433 primitive calls) in 0.078 seconds
 
    Ordered by: cumulative time
-   List reduced from 2585 to 10 due to restriction <10>
+   List reduced from 309 to 10 due to restriction <10>
 
    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
-        1    0.000    0.000    1.450    1.450 decisions.py:113(vectorize_data)
-        3    0.000    0.000    1.446    0.482 dispatcher.py:343(_compile_for_args)
-     31/3    0.000    0.000    1.446    0.482 dispatcher.py:859(compile)
-     11/3    0.000    0.000    1.446    0.482 dispatcher.py:79(compile)
-     11/3    0.000    0.000    1.446    0.482 dispatcher.py:86(_compile_cached)
-     11/3    0.000    0.000    1.446    0.482 dispatcher.py:101(_compile_core)
-     11/3    0.000    0.000    1.445    0.482 compiler.py:718(compile_extra)
-     15/3    0.000    0.000    1.442    0.481 compiler.py:432(compile_extra)
-     15/3    0.000    0.000    1.441    0.480 compiler.py:501(_compile_bytecode)
-     15/3    0.000    0.000    1.441    0.480 compiler.py:455(_compile_core)
+        1    0.000    0.000    0.078    0.078 decisions.py:115(vectorize_data)
+        1    0.000    0.000    0.034    0.034 frame.py:683(__init__)
+        1    0.000    0.000    0.034    0.034 construction.py:423(dict_to_mgr)
+        1    0.003    0.003    0.033    0.033 construction.py:96(arrays_to_mgr)
+        1    0.000    0.000    0.029    0.029 managers.py:2119(create_block_manager_from_column_arrays)
+        2    0.027    0.013    0.027    0.014 decisions.py:70(transform_question_data)
+        1    0.000    0.000    0.022    0.022 managers.py:1780(_consolidate_inplace)
+        1    0.000    0.000    0.022    0.022 managers.py:2257(_consolidate)
+        2    0.013    0.006    0.022    0.011 managers.py:2274(_merge_blocks)
+       11    0.010    0.001    0.010    0.001 {method 'repeat' of 'numpy.ndarray' objects}
 
 
