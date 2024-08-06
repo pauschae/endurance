@@ -6,17 +6,13 @@ Created on Mon Oct 23 16:13:21 2023
 
 @author: pis2
 """
-
 import numpy as np
 from scipy.special import softmax
 import pandas as pd
-from numba import jit, int64
-from joblib import Parallel, delayed
-import multiprocessing as mp
-
+from concurrent.futures import ProcessPoolExecutor
 
 #@jit(nopython=True)
-def calculate_utilities(correct, alpha, beta, sigma, remaining_endurance):
+def calculate_utilities(correct, alpha, beta, sigma, cognitive_endurance, t):
     """
     Calculates utilities as a function of item parameters and remaining
     endurance.
@@ -32,64 +28,51 @@ def calculate_utilities(correct, alpha, beta, sigma, remaining_endurance):
         Ability: for a well-rested individual 
         this gets added to the utility of the correct answer.
     sigma : numpy array
-        Utility difference between correct and incorrect answers.
-    remaining_endurance : numpy array numbers between 0 and 1 indicating
-        the remainign endurance
+        Utility difference between correct and incorrect answer.
+    cognitive_endurance : numpy array numbers between 0 and 1 indicating
+        the endurance parameter
+    
 
     Returns
     -------
     numpy array, shape (4,)
         A numeric vector with the utilities of each answer option.
     """
-    utilities = alpha + correct * beta * sigma * remaining_endurance
+    utilities = alpha + correct * beta * sigma * np.maximum(1 - cognitive_endurance * (t-1), 0)
     return utilities
 
+
 #@jit(nopython=True)
-def calculate_remaining_endurance(t, cognitive_endurance):
+def transform_question_data(answer):
     """
-    Models how endurance declines over time.
+    Transforms question data into a boolean array for vectorized calculations.
 
     Parameters
     ----------
-    t : int
-        Time, how many questions have passed.
-        start at 1
-    cognitive_endurance : float
-        Number that describes how fast endurance declines.
-
-    Returns
-    -------
-    float
-        The endurance level as a numeric scalar.
-    """
-        
-    endurance = np.maximum(1 - cognitive_endurance * (t-1), 0)
-    return endurance
-
-#@jit(nopython=True)
-def transform_question_data(answers):
-    """
-    Transforms question data for vectorized calculations.
-
-    Parameters
-    ----------
-    answers : numpy array of correct answers by question.
+    answer : numpy array of correct answers by question. Array contains the
+        item number i_q
 
     Returns
     -------
     numpy array
-        The data transformed for vectorized calculations.
+        The data transformed into a boolean array. This array has 4 times the
+        original size and contains a True value for question i at position
+        4*i+i_q-1
     """
-    nrows = len(answers)
-    # Create a zero matrix of shape (len(answers), 4)
-    corrects = np.zeros((nrows, 4), dtype=int)
+    nrows = len(answer)
+    num_options = 4  # Assuming there are 4 possible options per question
     
-    # Use numpy advanced indexing to set the correct positions to 1
+    # Create a boolean matrix initialized to False
+    correct = np.zeros((nrows, num_options), dtype=bool)
+    
+    # Use numpy advanced indexing to set the correct positions to True
     for i in range(nrows):
-        corrects[i, answers[i] - 1] = 1
+        correct[i, answer[i] - 1] = True
     
-    out = corrects.flatten()    
+    # Flatten the boolean array to match the original function's return shape
+    out = correct.flatten()
     return out
+
 
 #@jit(nopython=True)
 def scale_to_item_level(n_questions, data):
@@ -149,7 +132,7 @@ def vectorize_data(params_individuals, params_questions, data_questions, data_in
             endurance-scaled ability.
 
     data_questions : DataFrame
-        DataFrame containing the correct answers for the questions.
+        DataFrame containing the correct answer for the questions.
         - question_id : int
             Unique identifier for each question.
         - correct_answer : int
@@ -168,15 +151,15 @@ def vectorize_data(params_individuals, params_questions, data_questions, data_in
 
     Returns
     -------
-    output_df : DataFrame
-        A DataFrame containing the vectorized data (1 row per question answer),
+    output_dict : Dictionary
+        A Dictionary containing the vectorized data (1 row per question answer),
         including the following columns:
-        - corrects : 1 if the answer is correct.
-        - alphas : Combined alpha parameters for each question.
-        - betas : Scaled individual difficulty parameters.
-        - sigmas : Question sensitivty parameters.
+        - correct : 1 if the answer is correct.
+        - alpha : Combined alpha parameters for each question.
+        - beta : Scaled individual difficulty parameters.
+        - sigma : Question sensitivty parameters.
         - remaining_endurances: endurance at current time t
-        - answers: dummy indicating if this is the correct answer
+        - answer: dummy indicating if this is the correct answer
         - The resulting dataset also includes the question_id, individual_id and t
         
         The dataset is sorted by individual ids and within individual by 
@@ -188,20 +171,19 @@ def vectorize_data(params_individuals, params_questions, data_questions, data_in
     n_individuals = len(data_individuals) // n_questions
       
     # Individual Level 
-    betas = scale_to_item_level(n_questions, params_individuals["beta"].to_numpy())
-    ks = scale_to_item_level(n_questions, params_individuals["k"].to_numpy())
-    answers = transform_question_data(data_individuals['answer'].to_numpy())
+    beta = scale_to_item_level(n_questions, params_individuals["beta"].to_numpy())
+    k = scale_to_item_level(n_questions, params_individuals["k"].to_numpy())
+    answer = transform_question_data(data_individuals['answer'].to_numpy())
 
     # Question Level    
-    alphas = params_questions[["alpha1", "alpha2", "alpha3", "alpha4"]].to_numpy().flatten()
-    alphas = np.tile(alphas, n_individuals)
-    sigmas = np.tile(scale_to_item_level(1, params_questions["sigma"].to_numpy()), n_individuals)
+    alpha = params_questions[["alpha1", "alpha2", "alpha3", "alpha4"]].to_numpy().flatten()
+    alpha = np.tile(alpha, n_individuals)
+    sigma = np.tile(scale_to_item_level(1, params_questions["sigma"].to_numpy()), n_individuals)
 
     # Time Varying
-    ts = scale_to_item_level(1, data_individuals['t'].to_numpy())
-    remaining_endurances = calculate_remaining_endurance(ts, ks)
-    corrects = transform_question_data(data_questions['correct_answer'].to_numpy())
-    corrects = np.tile(corrects, n_individuals)
+    t = scale_to_item_level(1, data_individuals['t'].to_numpy())
+    correct = transform_question_data(data_questions['correct_answer'].to_numpy())
+    correct = np.tile(correct, n_individuals)
     
     
     #Set ids
@@ -209,63 +191,62 @@ def vectorize_data(params_individuals, params_questions, data_questions, data_in
     individual_id = np.repeat(data_individuals['individual_id'], 4)
 
 
-    output_df = pd.DataFrame({
-        'corrects': corrects,
-        'alphas': alphas,
-        'betas': betas,
-        'sigmas': sigmas,
-        'remaining_endurances': remaining_endurances,
-        'answers': answers,
-        't': ts,
-        'k': ks,
+    output_dict = {
+        'correct': correct,
+        'alpha': alpha,
+        'beta': beta,
+        'sigma': sigma,
+        'answer': answer,
+        't': t,
+        'k': k,
         'question_id': question_id,
         'individual_id': individual_id
-    })
+    }
 
-    return output_df
+    return output_dict
 
-def calculate_choice_probabilities(vectorized_df):
+def calculate_choice_probabilities(vectorized_dict):
     """
-    Calculate choice probabilities and filter DataFrame based on answers.
+    Calculate choice probabilities and filter Output based on answer.
 
     This function computes the utility scores using the `utilities` function and stores them
     in the 'res_u' column of the input DataFrame. It then calculates the choice probabilities 
     using the softmax function on these utility scores, storing the result in the 'choice_prob'
-    column. Finally, it filters the DataFrame to include only rows where the 'answers' column 
+    column. Finally, it filters the DataFrame to include only rows where the 'answer' column 
     is equal to 1.
 
     Parameters:
     vectorized_df (pd.DataFrame): A DataFrame containing the following columns:
-        - 'corrects': (int) The number of the correct answer.
-        - 'alphas': (float) Parameter alpha for the utility calculation.
-        - 'betas': (float) Parameter beta for the utility calculation.
-        - 'sigmas': (float) Parameter sigma for the utility calculation.
+        - 'correct': (int) dummy indicating if this is the correct answer.
+        - 'alpha': (float) Parameter alpha for the utility calculation.
+        - 'beta': (float) Parameter beta for the utility calculation.
+        - 'sigma': (float) Parameter sigma for the utility calculation.
         - 'individual_id': (int) Identifier for individuals.
         - 'question_id': (int) Identifier for questions.
-        - 'answers': (int) The number of the answer given by the test taker.
+        - 'answer': (int) dummy indicating if this is the chosen answer
 
     Returns:
-    pd.DataFrame: A filtered DataFrame containing only rows where the 'answers' column is 1. 
-                  The DataFrame includes two additional columns:
-        - 'res_u': The calculated utility scores.
-        - 'choice_prob': The calculated choice probabilities using the softmax function.
+        A numpy array with the calculated utility scores for answers that were
+        actually chosen.
     """
-    vectorized_df['res_u'] = calculate_utilities(vectorized_df['corrects'].to_numpy(),
-                                                 vectorized_df['alphas'].to_numpy(), 
-                                                 vectorized_df['betas'].to_numpy(),
-                                                 vectorized_df['sigmas'].to_numpy(),
-                                                 vectorized_df['remaining_endurances'].to_numpy())
+    vectorized_dict['res_u'] = calculate_utilities(correct=vectorized_dict['correct'],
+                                                alpha=vectorized_dict['alpha'], 
+                                                beta=vectorized_dict['beta'],
+                                                sigma=vectorized_dict['sigma'],
+                                                cognitive_endurance= vectorized_dict['k'],
+                                                t=vectorized_dict['t'])
     
+    assert isinstance(vectorized_dict['res_u'], np.ndarray), f"res_u must be a NumPy array, but got {type(vectorized_dict['res_u'])}"
     
     #Recast The Utilities to and use the softmax in a vectorized way
-    u_array = vectorized_df['res_u'].values.reshape((-1, 4))
+    u_array = vectorized_dict['res_u'].reshape((-1, 4))
     softmax_array = softmax(u_array, axis=1)
     flattened_softmax_array = softmax_array.flatten()
-    softmax_series = pd.Series(flattened_softmax_array)
-
-
-    vectorized_df['choice_prob'] = softmax_series
-    return vectorized_df
+    
+    #Filter to answers that were actually chosen
+    answer = vectorized_dict["answer"]
+    out = flattened_softmax_array[answer]
+    return out
 
 #@jit(nopython=True)
 def simulate_question_parameters(n, alpha_variance=1,
@@ -275,7 +256,7 @@ def simulate_question_parameters(n, alpha_variance=1,
 
     Parameters:
     n (int): Number of rows to simulate.
-    alpha_variance (float): Variance of the normal distribution for alphas.
+    alpha_variance (float): Variance of the normal distribution for alpha.
     alpha_cols (int): Number of alpha columns to generate.
     sigma_shape (float): Shape parameter for the Gamma distribution for sigma.
     sigma_scale (float): Scale parameter for the Gamma distribution for sigma.
@@ -286,14 +267,14 @@ def simulate_question_parameters(n, alpha_variance=1,
     # Generate question_id from 1 to n
     question_id = np.arange(1, n + 1)
 
-    # Generate alphas from a normal distribution with mean m and variance v
-    alphas = np.random.normal(0, np.sqrt(alpha_variance), (n, alpha_cols))
+    # Generate alpha from a normal distribution with mean m and variance v
+    alpha = np.random.normal(0, np.sqrt(alpha_variance), (n, alpha_cols))
     
     # Generate sigma from a Gamma distribution with specified shape and scale
     sigma = np.random.gamma(sigma_shape, sigma_scale, n)
 
     # Combine all columns into a DataFrame
-    data = np.column_stack((question_id, alphas, sigma))
+    data = np.column_stack((question_id, alpha, sigma))
     columns = ["question_id"] + [f"alpha{i+1}" for i in range(alpha_cols)] + ["sigma"]
 
     return (data, columns)
@@ -329,8 +310,74 @@ def simulate_individual_parameters(n, beta_shape=2, beta_scale=1, k_alpha=2, k_b
 
     return (data, columns)
 
+# def calc_marginal_likelihood(params_df, data_questions, data_individuals, n_draws):
+#     """
+#     Calculate the marginal likelihood using parallel processing.
+
+#     Parameters:
+#     params_df (pd.DataFrame): DataFrame with distribution parameters.
+#     data_questions (pd.DataFrame): DataFrame with question data.
+#     data_individuals (pd.DataFrame): DataFrame with individual data.
+#     n_draws (int): Number of draws for simulation.
+
+#     Returns:
+#     dict: Contains contributions and the calculated likelihood value.
+#     """
+#     print(f"{n_draws} draws")
+    
+#     # Create parallel lists for each argument
+#     params_parallel = [params_df] * n_draws
+#     data_questions_parallel = [data_questions] * n_draws
+#     data_individuals_parallel = [data_individuals] * n_draws
+    
+#     # Use ProcessPoolExecutor for parallel processing
+#     with ProcessPoolExecutor() as executor:
+#         results = list(
+#             executor.map(
+#                 inner_loop_marginal_likelihood,
+#                 params_parallel,
+#                 data_questions_parallel,
+#                 data_individuals_parallel
+#                 )
+#             )
+#     # Stack the probabilities from results
+#     stacked_props = np.vstack(results)
+#     contributions = np.mean(stacked_props, axis=0)
+#     contributions = np.log(contributions)
+#     value = contributions.sum()
+
+#     print(f"Value of the likelihood: {value}")
+#     return {"contributions": contributions, "value": value}
+
+def calc_marginal_likelihood(params_df, data_questions, data_individuals, n_draws):
+    print(f"{n_draws} draws")
+
+    results = []
+    for _ in range(n_draws):
+        probabilities = inner_loop_marginal_likelihood(params_df, data_questions, data_individuals)
+        results.append(probabilities)
+
+    stacked_props = np.vstack(results)
+    contributions = np.mean(stacked_props, axis=0)
+    contributions = np.log(contributions)
+    value = contributions.sum()
+    
+    print(f"Value of the likelihood: {value}")
+    return {"contributions": contributions, "value": value}
+
+
 def inner_loop_marginal_likelihood(params_df, data_questions, data_individuals):
-    # Draw From the Distribution
+    """
+    A single iteration of calculating marginal likelihood.
+
+    Parameters:
+    params_df (pd.DataFrame): DataFrame with distribution parameters.
+    data_questions (pd.DataFrame): DataFrame with question data.
+    data_individuals (pd.DataFrame): DataFrame with individual data.
+
+    Returns:
+    np.array: Choice probabilities for the iteration.
+    """
     draw_data_questions, draw_columns_questions = simulate_question_parameters(
         data_questions.shape[0], 
         alpha_variance=params_df.loc["alpha_variance", "value"],
@@ -351,8 +398,7 @@ def inner_loop_marginal_likelihood(params_df, data_questions, data_individuals):
     )
     
     draw_params_individuals = pd.DataFrame(draw_data_individuals,
-                                                 columns=draw_columns_individuals)
-
+                                           columns=draw_columns_individuals)
 
     vectorized_df = vectorize_data(
         draw_params_individuals,
@@ -361,23 +407,8 @@ def inner_loop_marginal_likelihood(params_df, data_questions, data_individuals):
         data_individuals
     )
 
-    df_with_new_choice_probabilities = calculate_choice_probabilities(vectorized_df)
-    df_with_new_choice_probabilities = df_with_new_choice_probabilities[df_with_new_choice_probabilities["answers"]==1]
-    new_choice_probabilities = df_with_new_choice_probabilities.choice_prob.values
-    return(new_choice_probabilities)
-
-
-def calc_marginal_likelihood(params_df, data_questions, data_individuals, n_draws):
-        print(f"{n_draws} draws")
-
-        mp.set_start_method('spawn', force=True)
-        results = Parallel(n_jobs=-1, backend='multiprocessing')(delayed(inner_loop_marginal_likelihood)(params_df, data_questions, data_individuals) for i in range(n_draws))
-        stacked_props = np.vstack(results)
-        contributions = np.mean(stacked_props, axis=0)
-        contributions = np.log(contributions)
-        value= contributions.sum()
-        print(f"Value of the likelihood: {value}")
-        return {"contributions": contributions, "value": value}
+    new_choice_probabilities = calculate_choice_probabilities(vectorized_df)
+    return new_choice_probabilities
 
 def simulate_question_data(n_questions):
     """
@@ -462,8 +493,8 @@ def simulate_dgp(params_df, n_questions, n_individuals):
     for individual_index, individual_row in draw_params_individuals.iterrows():
         
         #Assign times to questions randomly
-        ts = np.arange(1, n_questions + 1)
-        #np.random.shuffle(ts)
+        t = np.arange(1, n_questions + 1)
+        #np.random.shuffle(t)
         
         # Creat empty containers for the other variables
         choices = []
@@ -471,9 +502,9 @@ def simulate_dgp(params_df, n_questions, n_individuals):
         individual_ids = []
         remaining_endurance = []
         for question_index, question_row in draw_params_questions.iterrows():
-            t = ts[question_index]
-            corrects = transform_question_data(pd.Series(question_row.correct_answer.astype(int)).to_numpy())
-            alphas = np.array([
+            question_t = t[question_index]
+            correct = transform_question_data(pd.Series(question_row.correct_answer.astype(int)).to_numpy())
+            alpha = np.array([
                 question_row.alpha1, 
                 question_row.alpha2, 
                 question_row.alpha3, 
@@ -483,11 +514,13 @@ def simulate_dgp(params_df, n_questions, n_individuals):
 
             k = individual_row.k
             beta = individual_row.beta
-            new_remaining_endurance = calculate_remaining_endurance(t, k)
-            remaining_endurance.append(new_remaining_endurance)
             
-            util = calculate_utilities(np.array(corrects),np.array(alphas),
-                                       np.array(beta),  np.array(sigma), np.array(new_remaining_endurance))
+            util = calculate_utilities(np.array(correct),
+                                       np.array(alpha),
+                                       np.array(beta),
+                                       np.array(sigma),
+                                       np.array(k),
+                                       np.array(question_t))
             p = softmax(util)
 
             assert np.isclose(sum(p), 1), "The choice probabilities must sum to 1"
@@ -496,14 +529,14 @@ def simulate_dgp(params_df, n_questions, n_individuals):
 
             question_ids.append(question_row.question_id)
             individual_ids.append(individual_row.individual_id)
-
+        
         # Create a DataFrame for the current individual
         individual_df = pd.DataFrame({
             'individual_id': individual_ids,
             'question_id': question_ids,
-            't': ts,
+            't': t,
             'answer': choices,
-            'remaining_endurance': remaining_endurance
+            'cognitive_endurance': k
         })
 
         # Append the individual DataFrame to the list

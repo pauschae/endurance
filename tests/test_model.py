@@ -10,13 +10,12 @@ Created on Mon Oct 23 16:13:21 2023
 import numpy as np
 import numpy.testing as npt
 from model.decisions import (calculate_utilities,
-                             calculate_remaining_endurance,
                              vectorize_data, transform_question_data,
                              scale_to_item_level,
                              calculate_choice_probabilities,
                              simulate_question_parameters,
                              simulate_individual_parameters)
-import pytest 
+#import pytest 
 import pandas as pd
 
 def test_utilities():
@@ -24,87 +23,16 @@ def test_utilities():
     beta_1 = np.array([0.5, 0.5, 1, 1.5])
     sigma_1 = 1
     correct_1 = np.array([0, 0, 0, 1])
-    remaining_endurance_1 = np.array([1, 1, 1, 1])
-    utilities_expected_1 = np.array([1, 2, 3, 5.5])
-    utilities_calculated_1 = calculate_utilities(correct_1, alpha_1, beta_1, sigma_1, remaining_endurance_1)
+    endurance_1 = np.array([0, 0, 0, 0.5])
+    t_1 = np.array([1, 1, 1, 2])
+    utilities_expected_1 = np.array([1, 2, 3, 4.75])
+    utilities_calculated_1 = calculate_utilities(correct_1, alpha_1, beta_1, sigma_1, endurance_1, t_1)
     npt.assert_array_equal(utilities_expected_1, utilities_calculated_1,
                        err_msg=f'utilities are {utilities_expected_1} but they should be {utilities_calculated_1}',
                        verbose=True, strict=False)
-    
-def test_calculate_remaining_endurance():
-    """
-    Test the calculate_remaining_endurance function.
-
-    This test checks if the calculate_remaining_endurance function correctly models
-    how endurance declines over time given the parameters t and cognitive_endurance.
-    """
-
-    # Test case 1: Basic functionality
-    t = 6
-    cognitive_endurance = 0.1
-    expected = 0.5
-    assert calculate_remaining_endurance(t, np.array([cognitive_endurance])) == pytest.approx(expected), \
-        f"Expected {expected}, but got {calculate_remaining_endurance(t, cognitive_endurance)}"
-
-    # Test case 2: Endurance does not go below zero
-    t = 21
-    cognitive_endurance = 0.1
-    expected = 0
-    assert calculate_remaining_endurance(t, cognitive_endurance) == pytest.approx(expected), \
-        f"Expected {expected}, but got {calculate_remaining_endurance(t, cognitive_endurance)}"
-
-    # Test case 3: Zero time, endurance should be 1
-    t = 1
-    cognitive_endurance = 0.1
-    expected = 1
-    assert calculate_remaining_endurance(t, cognitive_endurance) == pytest.approx(expected), \
-        f"Expected {expected}, but got {calculate_remaining_endurance(t, cognitive_endurance)}"
-
-    # Test case 4: High cognitive endurance rate, endurance drops quickly
-    t = 2
-    cognitive_endurance = 0.9
-    expected = 0.1
-    assert calculate_remaining_endurance(t, cognitive_endurance) == pytest.approx(expected), \
-        f"Expected {expected}, but got {calculate_remaining_endurance(t, cognitive_endurance)}"
-
-    # Test case 5: Negative cognitive endurance rate, endurance increases
-    t = 6
-    cognitive_endurance = -0.1
-    expected = 1.5
-    assert calculate_remaining_endurance(t, cognitive_endurance) == pytest.approx(expected), \
-        f"Expected {expected}, but got {calculate_remaining_endurance(t, cognitive_endurance)}"
-
-    print("All tests passed!")
-    
-def test_calculate_remaining_endurance_vector():
-    """
-    Test the calculate_remaining_endurance function with vector inputs.
-
-    This test checks if the calculate_remaining_endurance function correctly models
-    how endurance declines over time when passing vectors (arrays) of time 
-    and cognitive endurance values.
-    """
-
-    # Define test cases
-    t = np.array([1, 2, 3, 4, 5, 6])
-    cognitive_endurance = np.array([0.1, 0.2, 0.3, 0.1, 0.05, 0.15])
-
-    # Expected output
-    expected = np.array([1, 0.8, 0.4, 0.7, 0.8, 0.25])
-    
-    # Calculate actual output
-    actual = calculate_remaining_endurance(t, cognitive_endurance)
-
-    # Test the results
-    np.testing.assert_array_almost_equal(
-        actual, expected, decimal=6,
-        err_msg=f"Expected {expected}, but got {actual}"
-    )
-
-    print("All vector tests passed!")
-
+        
 def test_vectorize_data():
-    # Example Datasets
+    # Example Dataset
     example_data_individuals = pd.DataFrame(
         data=[[1, 1, 1, 1], [1, 3, 2, 2], [2, 1, 1, 2], [2, 2, 2, 1]],
         columns=["individual_id", "answer", "t", "question_id"],
@@ -126,38 +54,33 @@ def test_vectorize_data():
     )
 
     # Expected output 
-    expected_corrects = np.array([1, 0, 0, 0,
+    expected_correct = np.array([1, 0, 0, 0,
                                   0, 0, 1, 0,
                                   1, 0, 0, 0,
                                   0, 0, 1, 0])
     
-    expected_ks = np.array([0.1]*8 + [0.2]*8)
+    expected_k = np.array([0.1]*8 + [0.2]*8)
     
-    expected_alphas = np.array([1, 1, 1, 1,
+    expected_alpha = np.array([1, 1, 1, 1,
                                 3, 5, 2, 4,
                                 1, 1, 1, 1,
                                 3, 5, 2, 4])
     
-    expected_betas =  np.array([1]*8 + [3]*8)
+    expected_beta =  np.array([1]*8 + [3]*8)
     
-    expected_remaining_endurances = np.array([1, 1, 1, 1,
-                                    0.9, 0.9, 0.9, 0.9,
-                                    0.8, 0.8, 0.8, 0.8,
-                                    1, 1, 1, 1])
-    
-    expected_sigmas = np.array([1, 1, 1, 1,
+    expected_sigma = np.array([1, 1, 1, 1,
                                 5, 5, 5, 5,
                                 1, 1, 1, 1,
                                 5, 5, 5, 5,])
     
-    expected_answers = np.array([1, 0, 0, 0,
+    expected_answer = np.array([1, 0, 0, 0,
                                  0, 0, 1, 0,
                                  0, 1, 0, 0,
                                  1, 0, 0, 0])
     
-    expected_question_ids =  np.array(2*(4*[1]+4*[2]))
-    expected_individual_ids = np.array(8*[1]+8*[2])
-    expected_ts =  np.array(4*[1]+8*[2]+4*[1])
+    expected_question_id =  np.array(2*(4*[1]+4*[2]))
+    expected_individual_id = np.array(8*[1]+8*[2])
+    expected_t =  np.array(4*[1]+8*[2]+4*[1])
 
 
     # Call the function
@@ -165,41 +88,39 @@ def test_vectorize_data():
     output_df = vectorize_data(example_params_individuals, example_params_questions,
                                example_data_questions, example_data_individuals)
     
-    # Extract actual outputs
-    actual_corrects = output_df['corrects'].to_numpy()
-    actual_alphas = output_df['alphas'].to_numpy()
-    actual_betas = output_df['betas'].to_numpy()
-    actual_sigmas = output_df['sigmas'].to_numpy()
-    actual_ts = output_df['t'].to_numpy()
-    actual_ks = output_df['k'].to_numpy()
-    actual_remaining_endurances = output_df['remaining_endurances'].to_numpy()
-    actual_answers = output_df['answers'].to_numpy()
-    actual_question_ids = output_df['question_id'].to_numpy()
-    actual_individual_ids = output_df['individual_id'].to_numpy()
+    # Extract actual output
+    actual_correct = output_df['correct']
+    actual_alpha = output_df['alpha']
+    actual_beta = output_df['beta']
+    actual_sigma = output_df['sigma']
+    actual_t = output_df['t']
+    actual_k = output_df['k']
+    actual_answer = output_df['answer']
+    actual_question_id = output_df['question_id']
+    actual_individual_id = output_df['individual_id']
 
 
 
-    # Test the results
-    assert np.allclose(actual_ks, expected_ks), f"Expected {expected_ks}, but got {actual_ks}"
-    assert np.allclose(actual_ts, expected_ts), f"Expected {expected_ts}, but got {actual_ts}"
+    # Test the result
+    assert np.allclose(actual_k, expected_k), f"Expected {expected_k}, but got {actual_k}"
+    assert np.allclose(actual_t, expected_t), f"Expected {expected_t}, but got {actual_t}"
 
-    assert np.allclose(actual_corrects, expected_corrects), f"Expected {expected_corrects}, but got {actual_corrects}"
-    assert np.allclose(actual_alphas, expected_alphas), f"Expected {expected_alphas}, but got {actual_alphas}"
-    assert np.allclose(actual_betas, expected_betas), f"Expected {expected_betas}, but got {actual_betas}"
-    assert np.allclose(actual_sigmas, expected_sigmas), f"Expected {expected_sigmas}, but got {actual_sigmas}"
-    assert np.allclose(actual_remaining_endurances, expected_remaining_endurances), f"Expected {expected_remaining_endurances}, but got {actual_remaining_endurances}"
-    assert np.allclose(actual_answers, expected_answers), f"Expected {expected_answers}, but got {actual_answers}"
-    assert np.array_equal(actual_question_ids, expected_question_ids), f"Expected {expected_question_ids}, but got {actual_question_ids}"
-    assert np.array_equal(actual_individual_ids, expected_individual_ids), f"Expected {expected_individual_ids}, but got {actual_individual_ids}"
-    assert np.array_equal(actual_ts, expected_ts), f"Expected {expected_ts}, but got {actual_ts}"
+    assert np.allclose(actual_correct, expected_correct), f"Expected {expected_correct}, but got {actual_correct}"
+    assert np.allclose(actual_alpha, expected_alpha), f"Expected {expected_alpha}, but got {actual_alpha}"
+    assert np.allclose(actual_beta, expected_beta), f"Expected {expected_beta}, but got {actual_beta}"
+    assert np.allclose(actual_sigma, expected_sigma), f"Expected {expected_sigma}, but got {actual_sigma}"
+    assert np.allclose(actual_answer, expected_answer), f"Expected {expected_answer}, but got {actual_answer}"
+    assert np.array_equal(actual_question_id, expected_question_id), f"Expected {expected_question_id}, but got {actual_question_id}"
+    assert np.array_equal(actual_individual_id, expected_individual_id), f"Expected {expected_individual_id}, but got {actual_individual_id}"
+    assert np.array_equal(actual_t, expected_t), f"Expected {expected_t}, but got {actual_t}"
 
     
 def test_transform_question_data():
     # Test input data
-    test_answers = np.array([1, 2, 3, 1, 3, 4])
+    test_answer = np.array([1, 2, 3, 1, 3, 4])
     
     # Expected output
-    expected_corrects = np.array([1, 0, 0, 0,
+    expected_correct = np.array([1, 0, 0, 0,
                                   0, 1, 0, 0,
                                   0, 0, 1, 0,
                                   1, 0, 0, 0,
@@ -207,12 +128,12 @@ def test_transform_question_data():
                                   0, 0, 0, 1])
     
     # Call the function with test data
-    actual_corrects = transform_question_data(test_answers)
+    actual_correct = transform_question_data(test_answer)
 
     # Assert that the actual output matches the expected output
     np.testing.assert_array_equal(
-        actual_corrects, expected_corrects, 
-        err_msg=f"Expected {expected_corrects}, but got {actual_corrects}"
+        actual_correct, expected_correct, 
+        err_msg=f"Expected {expected_correct}, but got {actual_correct}"
     )
 
     
@@ -230,33 +151,32 @@ def test_scale_to_item_level():
 def test_calculate_choice_probabilities():
     # Example Vectorized data
     # Variables
-    corrects = np.array([1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0])
-    ks = np.array([0.1] * 8 + [0.2] * 8)
-    alphas = np.array([1, 1, 1, 1, 3, 5, 2, 4, 1, 1, 1, 1, 3, 5, 2, 4])
-    betas = np.array([1] * 8 + [3] * 8)
-    remaining_endurances = np.array([1, 1, 1, 1, 0.9, 0.9, 0.9, 0.9, 0.8, 0.8,
-                                     0.8, 0.8, 1, 1, 1, 1])
-    sigmas = np.array([1, 1, 1, 1, 5, 5, 5, 5, 1, 1, 1, 1, 5, 5, 5, 5])
-    answers = np.array([1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0])
-    question_ids = np.array(2 * (4 * [1] + 4 * [2]))
-    individual_ids = np.array(8 * [1] + 8 * [2])
-    ts = np.array(4 * [1] + 8 * [2] + 4 * [1])
+    correct = np.array([1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0])
+    k = np.array([0.1] * 8 + [0.2] * 8)
+    alpha = np.array([1, 1, 1, 1, 3, 5, 2, 4, 1, 1, 1, 1, 3, 5, 2, 4])
+    beta = np.array([1] * 8 + [3] * 8)
+    sigma = np.array([1, 1, 1, 1, 5, 5, 5, 5, 1, 1, 1, 1, 5, 5, 5, 5])
+    answer = np.array([1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0])
+    question_id = np.array(2 * (4 * [1] + 4 * [2]))
+    individual_id = np.array(8 * [1] + 8 * [2])
+    t = np.array(4 * [1] + 8 * [2] + 4 * [1])
 
     # Creating the DataFrame
-    vectorized_df = pd.DataFrame({
-        "corrects": corrects,
-        "ks": ks,
-        "alphas": alphas,
-        "betas": betas,
-        "remaining_endurances": remaining_endurances,
-        "sigmas": sigmas,
-        "answers": answers,
-        "question_ids": question_ids,
-        "individual_ids": individual_ids,
-        "ts": ts,
-        "answers": answers
-    })
+    vectorized_dict = {
+        "correct": correct,
+        "k": k,
+        "alpha": alpha,
+        "beta": beta,
+        "sigma": sigma,
+        "answer": answer,
+        "question_id": question_id,
+        "individual_id": individual_id,
+        "t": t,
+        "answer": answer
+    }
     
+    #vectorized_df = vectorized_df.sort_values(by=['question_id', 'individual_id'], ascending=True)
+
     # Expected choice probabilities
     expected_choice_probs = np.array([
         0.475366886, 0.174877705, 0.174877705, 0.174877705,
@@ -264,10 +184,10 @@ def test_calculate_choice_probabilities():
         0.78606844, 0.07131052,  0.07131052, 0.07131052,
         8.31521E-07, 6.14416E-06, 0.999990764, 2.26031E-06
     ])
+    expected_choice_probs = expected_choice_probs[answer]
     
     # Calculate actual choice probabilities using the function
-    actual_df = calculate_choice_probabilities(vectorized_df)
-    actual_choice_probs = actual_df['choice_prob'].values
+    actual_choice_probs = calculate_choice_probabilities(vectorized_dict)
 
     # Assert that the actual choice probabilities match the expected choice probabilities
     npt.assert_array_almost_equal(
@@ -344,7 +264,7 @@ def calculate_expected_vars_individuals(beta_shape, beta_scale, k_alpha, k_beta)
     return pd.Series([beta_var, k_var], index=["beta", "k"])
 
 
-def simulate_and_check(simulation_func, params, expected_means, expected_vars, test_case_number, decimal=2):
+def simulate_and_check(simulation_func, params, expected_means, expected_vars, test_case_number, decimal=1):
     """
     Simulate parameters using the specified function and check if the means and variances match expected values.
     

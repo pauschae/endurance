@@ -59,13 +59,6 @@ def plot_simulation_data(params_questions, params_individuals, df_with_params):
     plt.savefig(os.path.join(output_dir, 'probability_to_answer_correctly_over_time.png'))
     plt.close()
 
-    # Second plot: Remaining endurance over time
-    sns.regplot(data=df_with_params, x="t", y="remaining_endurance", x_bins=np.arange(0, 100, 10), order=2)
-    plt.xlabel('Time (t)')
-    plt.ylabel('Remaining Endurance')
-    plt.title('Remaining Endurance Over Time')
-    plt.savefig(os.path.join(output_dir, 'remaining_endurance_over_time.png'))
-    plt.close()
 
 
 def plot_profile_likelihood(params, column_name, my_kwargs, step_size=0.2, window=1):
@@ -136,7 +129,6 @@ def mean_choice_right_answer(alpha_variance,
     Calculate the average probability to answer a question correctly.
     Given the model parameters.
     """
-    
     params = {
         "value": [alpha_variance, sigma_shape, sigma_scale,
                   beta_shape, beta_scale, k_alpha, k_beta],
@@ -166,6 +158,7 @@ def mean_choice_right_answer(alpha_variance,
     data_individuals_df = pd.DataFrame(data_individuals)
 
     llh = calc_marginal_likelihood(params_df, data_questions_df, data_individuals_df, n_draws)
+
     out = math.exp(llh["contributions"])
     
     return out
@@ -203,15 +196,13 @@ def plot_parameter_effects(param_ranges_df, n_draws, t=0):
 
         # List to store outputs
         outputs = []
-
         # Iterate over the values for the current parameter
         for value in param_values:
-            try:
-                # Set the current parameter to the iterated value
-                fixed_params[param_name] = value
-
-                # Call the function with the current parameter value and fixed others
-                result = mean_choice_right_answer(
+            # Set the current parameter to the iterated value
+            fixed_params[param_name] = value
+            
+            # Call the function with the current parameter value and fixed others
+            result = mean_choice_right_answer(
                     fixed_params['alpha_variance'],
                     fixed_params['sigma_shape'],
                     fixed_params['sigma_scale'],
@@ -222,10 +213,9 @@ def plot_parameter_effects(param_ranges_df, n_draws, t=0):
                     t,
                     n_draws
                 )
-                outputs.append(result)
-            except Exception as e:
-                print(f"An error occurred for {param_name}={value}: {e}")
-                outputs.append(None)  # Append None or handle the error as needed
+
+            outputs.append(result)
+
 
         # Reset the parameter to its original fixed value after iteration
         fixed_params[param_name] = 0.5
@@ -235,7 +225,7 @@ def plot_parameter_effects(param_ranges_df, n_draws, t=0):
         plt.plot(param_values, outputs, marker='o', linestyle='-')
         plt.xlabel(param_name)
         plt.ylabel('Average Probability')
-        plt.title(f'Effect of {param_name} on Probability to Answer Correctly')
+        plt.title(f'Effect of {param_name} on Probability to Answer Correctly t={t}')
         plt.grid(True)
-        plt.savefig(os.path.join(output_dir, f'effect_of_{param_name}.png'))
+        plt.savefig(os.path.join(output_dir, f'effect_of_{param_name}_{t}.png'))
         plt.close()

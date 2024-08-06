@@ -1,20 +1,20 @@
-Mon Aug  5 14:32:14 2024    profile_results_calc_marginal_likelihood.prof
+Mon Aug  5 14:37:39 2024    profile_results_calc_marginal_likelihood.prof
 
-         145 function calls in 45.552 seconds
+         61283 function calls in 33.407 seconds
 
    Ordered by: cumulative time
-   List reduced from 92 to 10 due to restriction <10>
+   List reduced from 235 to 10 due to restriction <10>
 
    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
-        1    0.000    0.000   45.552   45.552 decisions.py:370(calc_marginal_likelihood)
-        1    0.000    0.000   45.552   45.552 parallel.py:1902(__call__)
-        1    0.000    0.000   45.552   45.552 parallel.py:1356(_initialize_backend)
-        1    0.000    0.000   45.552   45.552 _parallel_backends.py:504(configure)
-        1   45.551   45.551   45.551   45.551 {built-in method gc.collect}
-        1    0.000    0.000    0.000    0.000 _parallel_backends.py:454(effective_n_jobs)
-        1    0.000    0.000    0.000    0.000 _parallel_backends.py:247(effective_n_jobs)
-        1    0.000    0.000    0.000    0.000 context.py:83(cpu_count)
-        1    0.000    0.000    0.000    0.000 context.py:220(_cpu_count_user)
-        1    0.000    0.000    0.000    0.000 context.py:184(_cpu_count_affinity)
+        1    0.002    0.002   33.407   33.407 decisions.py:329(calc_marginal_likelihood)
+     2519   32.602    0.013   32.602    0.013 {method 'acquire' of '_thread.lock' objects}
+     1001    0.007    0.000   32.373    0.032 process.py:600(_chain_from_iterable_of_lists)
+     1001    0.005    0.000   32.363    0.032 _base.py:612(result_iterator)
+     1000    0.013    0.000   32.357    0.032 _base.py:314(_result_or_cancel)
+     1000    0.022    0.000   32.339    0.032 _base.py:428(result)
+      757    0.013    0.000   32.311    0.043 threading.py:288(wait)
+        1    0.000    0.000    0.450    0.450 process.py:796(map)
+        1    0.000    0.000    0.450    0.450 _base.py:583(map)
+        1    0.003    0.003    0.450    0.450 _base.py:608(<listcomp>)
 
 
