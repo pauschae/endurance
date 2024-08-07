@@ -33,14 +33,14 @@ def main():
     # Plot Choice Probabilities
     # Example DataFrame with parameter ranges
     param_ranges_df = pd.DataFrame({
-        'parameter': ['alpha_variance', 'sigma_shape', 'sigma_scale', 'beta_shape', 'beta_scale', 'k_alpha', 'k_beta'],
+        'parameter': ['alpha_variance', 'beta_shape', 'beta_scale', 'sigma_shape', 'sigma_scale', 'k_alpha', 'k_beta'],
         'lowest': [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
-        'highest': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-        'step_size': [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
+        'highest': [10.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0],
+        'step_size': [1, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2]
     })
 
     # Call the function with the parameter ranges and number of draws
-    plot_parameter_effects(param_ranges_df, n_draws=10000, t=0)
+    plot_parameter_effects(param_ranges_df, n_draws=10000, t=1)
 
     # Simulate the DGP
     params_questions, params_individuals, simulated_data = simulate_dgp(params, 100, 100)

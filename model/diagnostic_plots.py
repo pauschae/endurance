@@ -12,6 +12,8 @@ import seaborn as sns
 from model.decisions import calc_marginal_likelihood
 import math
 import os
+import copy
+import csv
 
 # Create the "out" directory if it doesn't exist
 output_dir = "out"
@@ -159,21 +161,23 @@ def mean_choice_right_answer(alpha_variance,
 
     llh = calc_marginal_likelihood(params_df, data_questions_df, data_individuals_df, n_draws)
 
-    out = math.exp(llh["contributions"])
+    out = math.exp(llh["value"])
     
     return out
 
-def plot_parameter_effects(param_ranges_df, n_draws, t=0):
+def plot_parameter_effects(param_ranges_df, n_draws, t=0, output_dir = "out"):
     """
     Plot the effect of each parameter on the average probability to answer correctly,
     iterating over the range of each parameter while keeping others fixed.
-    
+    Write all parameter values and predicted probabilities to a CSV file.
+
     :param param_ranges_df: DataFrame with columns ['parameter', 'lowest', 'highest', 'step_size'].
     :param n_draws: Number of draws for the likelihood function.
+    :param output_dir: Directory where the CSV and plot files will be saved.
     :param t: The fixed time value for which to evaluate the function.
     """
     # Initial fixed parameter values
-    fixed_params = {
+    fixed_params_initial = {
         'alpha_variance': 1,
         'sigma_shape': 2,
         'sigma_scale': 1,
@@ -182,10 +186,12 @@ def plot_parameter_effects(param_ranges_df, n_draws, t=0):
         'k_alpha': 0.5,
         'k_beta': 5
     }
-    
 
     # Iterate over each parameter
     for _, row in param_ranges_df.iterrows():
+        # Reset the parameter to its original fixed value after iteration
+        fixed_params = copy.copy(fixed_params_initial)
+        
         param_name = row['parameter']
         lowest = row['lowest']
         highest = row['highest']
@@ -196,13 +202,23 @@ def plot_parameter_effects(param_ranges_df, n_draws, t=0):
 
         # List to store outputs
         outputs = []
-        # Iterate over the values for the current parameter
-        for value in param_values:
-            # Set the current parameter to the iterated value
-            fixed_params[param_name] = value
-            
-            # Call the function with the current parameter value and fixed others
-            result = mean_choice_right_answer(
+
+        # Prepare CSV file
+        csv_filename = os.path.join(output_dir, f'{param_name}_effects.csv')
+        with open(csv_filename, mode='w', newline='') as csv_file:
+            csv_writer = csv.writer(csv_file)
+
+            # Write the header with all parameter names and probability
+            headers = list(fixed_params.keys()) + ['Probability']
+            csv_writer.writerow(headers)
+
+            # Iterate over the values for the current parameter
+            for value in param_values:
+                # Set the current parameter to the iterated value
+                fixed_params[param_name] = value
+
+                # Call the function with the current parameter value and fixed others
+                result = mean_choice_right_answer(
                     fixed_params['alpha_variance'],
                     fixed_params['sigma_shape'],
                     fixed_params['sigma_scale'],
@@ -213,19 +229,26 @@ def plot_parameter_effects(param_ranges_df, n_draws, t=0):
                     t,
                     n_draws
                 )
+                print(f"{param_name} is set to {fixed_params[param_name]}, probability to answer correctly is {result}")
 
-            outputs.append(result)
+                # Collect the current state of all parameters and result
+                row_data = list(fixed_params.values()) + [result]
+                outputs.append(result)
+                print(row_data)    
+            
+                # Write the row to the CSV
+                csv_writer.writerow(row_data)
 
-
-        # Reset the parameter to its original fixed value after iteration
-        fixed_params[param_name] = 0.5
+        plot_title = f'Effect of {param_name} on Probability to Answer Correctly t={t}'
 
         # Plotting
         plt.figure(figsize=(10, 6))
         plt.plot(param_values, outputs, marker='o', linestyle='-')
         plt.xlabel(param_name)
         plt.ylabel('Average Probability')
-        plt.title(f'Effect of {param_name} on Probability to Answer Correctly t={t}')
+        plt.title(plot_title)
         plt.grid(True)
         plt.savefig(os.path.join(output_dir, f'effect_of_{param_name}_{t}.png'))
         plt.close()
+
+        print(f"Plot: {plot_title} is done")

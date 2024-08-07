@@ -7,38 +7,38 @@ Created on Mon Oct 23 16:13:21 2023
 @author: pis2
 """
 import numpy as np
-from scipy.special import softmax
+from scipy.special import softmax, logsumexp
 import pandas as pd
 from concurrent.futures import ProcessPoolExecutor
 
 #@jit(nopython=True)
 def calculate_utilities(correct, alpha, beta, sigma, cognitive_endurance, t):
     """
-    Calculates utilities as a function of item parameters and remaining
-    endurance.
+    Calculate utilities as a function of item parameters and remaining endurance.
 
     Parameters
     ----------
-    correct : numpy array
-        Vector that contains a 1 for the correct answer
-        and zeros otherwise.
-    alpha : numpy array
+    correct : numpy array of shape (n, 1)
+        Boolean array containing True for the correct answer and False otherwise.
+    alpha : numpy array of shape (n, 1)
         Baseline propensity to answer with option i.
-    beta : numpy array
-        Ability: for a well-rested individual 
-        this gets added to the utility of the correct answer.
-    sigma : numpy array
-        Utility difference between correct and incorrect answer.
-    cognitive_endurance : numpy array numbers between 0 and 1 indicating
-        the endurance parameter
-    
+    beta : numpy array of shape (n, 1)
+        Float values representing the ability for a well-rested individual.
+    sigma : numpy array of shape (n, 1)
+        Float values indicating the sensitivity of the question's net ability.
+    cognitive_endurance : numpy array of shape (n, 1)
+        Float values between 0 and 1 indicating the endurance parameter.
+    t : numpy array of shape (n, 1)
+        Integer values indicating the number of questions answered since the first question.
 
     Returns
     -------
-    numpy array, shape (4,)
+    numpy array of shape (4*n,)
         A numeric vector with the utilities of each answer option.
     """
-    utilities = alpha + correct * beta * sigma * np.maximum(1 - cognitive_endurance * (t-1), 0)
+    correct_bonus = beta * sigma * np.maximum(1 - cognitive_endurance * (t-1), 0)
+    utilities = alpha + correct_bonus*correct
+    
     return utilities
 
 
@@ -77,20 +77,21 @@ def transform_question_data(answer):
 #@jit(nopython=True)
 def scale_to_item_level(n_questions, data):
     """
-    Transforms individual data to the scale of question items.
+    Transform individual data to the scale of question items.
 
     Parameters
     ----------
     n_questions : int
-        Number of questions.
-    data : Series
-        A numpy array with individual-level data.
+        The number of questions.
+    data : numpy.ndarray or pandas.Series
+        An array or series with individual-level data.
 
     Returns
     -------
-    numpy array
-        A numpy series on question level that can be used for vectorized analysis.
+    numpy.ndarray
+        A numpy array at the question level that can be used for vectorized analysis.
     """
+    
     scaled = np.repeat(data, n_questions * 4)
     return scaled
 
@@ -180,6 +181,7 @@ def vectorize_data(params_individuals, params_questions, data_questions, data_in
     alpha = np.tile(alpha, n_individuals)
     sigma = np.tile(scale_to_item_level(1, params_questions["sigma"].to_numpy()), n_individuals)
 
+    
     # Time Varying
     t = scale_to_item_level(1, data_individuals['t'].to_numpy())
     correct = transform_question_data(data_questions['correct_answer'].to_numpy())
@@ -202,7 +204,7 @@ def vectorize_data(params_individuals, params_questions, data_questions, data_in
         'question_id': question_id,
         'individual_id': individual_id
     }
-
+    
     return output_dict
 
 def calculate_choice_probabilities(vectorized_dict):
@@ -226,8 +228,8 @@ def calculate_choice_probabilities(vectorized_dict):
         - 'answer': (int) dummy indicating if this is the chosen answer
 
     Returns:
-        A numpy array with the calculated utility scores for answers that were
-        actually chosen.
+        A scaler with the overall probability to observe the entire choice
+        profile.
     """
     vectorized_dict['res_u'] = calculate_utilities(correct=vectorized_dict['correct'],
                                                 alpha=vectorized_dict['alpha'], 
@@ -245,7 +247,14 @@ def calculate_choice_probabilities(vectorized_dict):
     
     #Filter to answers that were actually chosen
     answer = vectorized_dict["answer"]
-    out = flattened_softmax_array[answer]
+    selected_answers = flattened_softmax_array[answer]
+    
+    #Multiply the choice probabilities to get the probability for the entire profile
+    # Use logarithms to calculate the product in a numerically stable way
+    log_product = np.sum(np.log(selected_answers))
+
+    # Exponentiate the result to get the product
+    out = log_product
     return out
 
 #@jit(nopython=True)
@@ -358,12 +367,10 @@ def calc_marginal_likelihood(params_df, data_questions, data_individuals, n_draw
         results.append(probabilities)
 
     stacked_props = np.vstack(results)
-    contributions = np.mean(stacked_props, axis=0)
-    contributions = np.log(contributions)
-    value = contributions.sum()
+    value = logsumexp(a=stacked_props, axis=0, b = 1/n_draws)
     
     print(f"Value of the likelihood: {value}")
-    return {"contributions": contributions, "value": value}
+    return {"value": value}
 
 
 def inner_loop_marginal_likelihood(params_df, data_questions, data_individuals):
@@ -400,14 +407,14 @@ def inner_loop_marginal_likelihood(params_df, data_questions, data_individuals):
     draw_params_individuals = pd.DataFrame(draw_data_individuals,
                                            columns=draw_columns_individuals)
 
-    vectorized_df = vectorize_data(
+    vectorized_dict = vectorize_data(
         draw_params_individuals,
         draw_params_questions,
         data_questions,
         data_individuals
     )
 
-    new_choice_probabilities = calculate_choice_probabilities(vectorized_df)
+    new_choice_probabilities = calculate_choice_probabilities(vectorized_dict)
     return new_choice_probabilities
 
 def simulate_question_data(n_questions):
@@ -500,7 +507,6 @@ def simulate_dgp(params_df, n_questions, n_individuals):
         choices = []
         question_ids = []
         individual_ids = []
-        remaining_endurance = []
         for question_index, question_row in draw_params_questions.iterrows():
             question_t = t[question_index]
             correct = transform_question_data(pd.Series(question_row.correct_answer.astype(int)).to_numpy())
@@ -515,12 +521,12 @@ def simulate_dgp(params_df, n_questions, n_individuals):
             k = individual_row.k
             beta = individual_row.beta
             
-            util = calculate_utilities(np.array(correct),
-                                       np.array(alpha),
-                                       np.array(beta),
-                                       np.array(sigma),
-                                       np.array(k),
-                                       np.array(question_t))
+            util = calculate_utilities(correct = np.array(correct),
+                                       alpha = np.array(alpha),
+                                       beta = np.array(beta),
+                                       sigma = np.array(sigma),
+                                       cognitive_endurance = np.array(k),
+                                       t = np.array(question_t))
             p = softmax(util)
 
             assert np.isclose(sum(p), 1), "The choice probabilities must sum to 1"
